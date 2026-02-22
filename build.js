@@ -120,6 +120,35 @@ async function handleApi(request, env, url) {
     return json({ ok: true });
   }
 
+  if (pathname === '/api/ams-mapping' && method === 'GET') {
+    const rows = await env.DB.prepare('SELECT slot, spool_id FROM ams_spool_mapping ORDER BY slot ASC').all();
+    return json((rows.results || []).map((r) => ({
+      slot: Number(r.slot),
+      spoolId: String(r.spool_id || ''),
+    })));
+  }
+
+  const amsMappingMatch = pathname.match(new RegExp('^/api/ams-mapping/(\\d+)$'));
+  if (amsMappingMatch && method === 'PUT') {
+    const slot = Number(amsMappingMatch[1]);
+    const body = await readBody(request);
+    if (!body || typeof body.spoolId !== 'string') return json({ error: 'spoolId is required' }, 400);
+
+    await env.DB.prepare(
+      "INSERT INTO ams_spool_mapping (slot, spool_id, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(slot) DO UPDATE SET spool_id=excluded.spool_id, updated_at=datetime('now')"
+    ).bind(slot, body.spoolId.trim()).run();
+
+    return json({ ok: true });
+  }
+
+  if (amsMappingMatch && method === 'DELETE') {
+    const slot = Number(amsMappingMatch[1]);
+    await env.DB.prepare(
+      "INSERT INTO ams_spool_mapping (slot, spool_id, updated_at) VALUES (?, '', datetime('now')) ON CONFLICT(slot) DO UPDATE SET spool_id='', updated_at=datetime('now')"
+    ).bind(slot).run();
+    return json({ ok: true });
+  }
+
   if (pathname === '/api/locations' && method === 'GET') {
     const rows = await env.DB.prepare('SELECT * FROM storage_locations ORDER BY name COLLATE NOCASE ASC').all();
     return json((rows.results || []).map((r) => ({ id: r.id, name: r.name, createdAt: r.created_at })));

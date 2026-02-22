@@ -5,6 +5,7 @@ const PRINTER_STATUS_REFRESH_MS = 15000;
 let spools = [];
 let locations = [];
 let currentEditId = null;
+let amsMappingBySlot = {};
 
 const els = {
   statsGrid: document.getElementById('statsGrid'),
@@ -33,6 +34,9 @@ const els = {
   amsSection: document.getElementById('amsSection'),
   amsHumidity: document.getElementById('amsHumidity'),
   amsSlots: document.getElementById('amsSlots'),
+  amsLinkModal: document.getElementById('amsLinkModal'),
+  amsLinkTitle: document.getElementById('amsLinkTitle'),
+  amsLinkOptions: document.getElementById('amsLinkOptions'),
 };
 
 init();
@@ -50,6 +54,7 @@ function bindEvents() {
   document.getElementById('configurePrinterBtn').onclick = () => openPrinterModal();
   document.getElementById('refreshPrinterBtn').onclick = () => loadPrinterStatus();
   document.getElementById('closePrinterModalBtn').onclick = () => els.printerModal.close();
+  document.getElementById('closeAmsLinkModalBtn').onclick = () => els.amsLinkModal.close();
   document.getElementById('exportBtn').onclick = exportJson;
   document.getElementById('importInput').onchange = importJson;
 
@@ -95,6 +100,16 @@ async function loadSpools() {
 
 async function loadLocations() {
   locations = await api('/api/locations');
+}
+
+async function loadAmsMapping() {
+  const rows = await api('/api/ams-mapping');
+  amsMappingBySlot = {};
+  for (const row of rows || []) {
+    const slot = Number(row.slot);
+    if (!Number.isFinite(slot)) continue;
+    amsMappingBySlot[slot] = String(row.spoolId || '');
+  }
 }
 
 function refreshLocationSelect(selected = '') {
@@ -372,8 +387,12 @@ async function loadPrinterConfig() {
 
 async function loadPrinterStatus() {
   try {
-    const s = await api('/api/printer-status');
-    renderPrinterStatus(s || {});
+    const [status, mapping] = await Promise.all([
+      api('/api/printer-status'),
+      loadAmsMapping(),
+    ]);
+    renderPrinterStatus(status || {});
+    return mapping;
   } catch {
     setPrinterState('offline', 'Offline');
     renderAms({});
@@ -430,6 +449,12 @@ function renderAms(ams) {
     const activeBadge = isActive ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">ACTIVE</span>' : '';
     const borderStyle = isActive && colorHex ? `border-color:${colorHex}; box-shadow: inset 0 0 0 1px ${colorHex}55;` : '';
 
+    const linkedSpoolId = amsMappingBySlot[slot] || '';
+    const linkedSpool = linkedSpoolId ? spools.find((s) => s.id === linkedSpoolId) : null;
+    const linkedText = linkedSpool
+      ? `${escapeHtml(linkedSpool.brand)} — ${escapeHtml(linkedSpool.colorName)}`
+      : 'No linked spool';
+
     return `<div class="rounded-xl border border-border bg-slate-900/40 p-3 space-y-2" style="${borderStyle}">
       <div class="flex items-center justify-between">
         <div class="w-5 h-5 rounded-full border border-slate-500" style="background:${colorHex || '#64748b'}"></div>
@@ -437,8 +462,74 @@ function renderAms(ams) {
       </div>
       <div class="text-sm font-semibold">${escapeHtml(material)}</div>
       <div class="text-xs text-slate-400">Slot ${slot + 1}</div>
+      <div class="text-xs text-slate-400">${linkedText}</div>
+      <div>
+        ${linkedSpool
+          ? `<button data-unlink-slot="${slot}" class="text-xs text-slate-400 hover:text-rose-300 underline-offset-2 hover:underline">Unlink</button>`
+          : `<button data-link-slot="${slot}" class="btn-secondary text-xs py-1 px-2">Link Spool</button>`}
+      </div>
     </div>`;
   }).join('');
+
+  els.amsSlots.querySelectorAll('[data-link-slot]').forEach((btn) => {
+    btn.addEventListener('click', () => openAmsLinkModal(Number(btn.getAttribute('data-link-slot'))));
+  });
+
+  els.amsSlots.querySelectorAll('[data-unlink-slot]').forEach((btn) => {
+    btn.addEventListener('click', () => unlinkAmsSlot(Number(btn.getAttribute('data-unlink-slot'))));
+  });
+}
+
+function openAmsLinkModal(slot) {
+  els.amsLinkTitle.textContent = `Link Spool to AMS Slot ${slot + 1}`;
+
+  if (!spools.length) {
+    els.amsLinkOptions.innerHTML = '<div class="text-sm text-slate-400">No spools in inventory yet.</div>';
+    els.amsLinkModal.showModal();
+    return;
+  }
+
+  els.amsLinkOptions.innerHTML = spools.map((s) => {
+    return `<button data-select-spool="${escapeHtml(s.id)}" data-slot="${slot}" class="w-full text-left rounded-lg border border-border bg-slate-900/50 hover:border-slate-500 px-3 py-2 text-sm">
+      <div class="flex items-center gap-2">
+        <span class="swatch" style="background:${escapeHtml(s.colorHex || '#ffffff')}"></span>
+        <span class="font-medium">${escapeHtml(s.brand)} — ${escapeHtml(s.colorName)}</span>
+      </div>
+      <div class="text-xs text-slate-400 mt-1">${escapeHtml(s.material)} • ${Math.round(Number(s.remainingWeight || 0))}g left</div>
+    </button>`;
+  }).join('');
+
+  els.amsLinkOptions.querySelectorAll('[data-select-spool]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const spoolId = btn.getAttribute('data-select-spool');
+      const targetSlot = Number(btn.getAttribute('data-slot'));
+      linkAmsSlot(targetSlot, spoolId);
+    });
+  });
+
+  els.amsLinkModal.showModal();
+}
+
+async function linkAmsSlot(slot, spoolId) {
+  try {
+    await api(`/api/ams-mapping/${slot}`, {
+      method: 'PUT',
+      body: JSON.stringify({ spoolId }),
+    });
+    els.amsLinkModal.close();
+    await loadPrinterStatus();
+  } catch (err) {
+    alert(err.message || 'Failed to link spool.');
+  }
+}
+
+async function unlinkAmsSlot(slot) {
+  try {
+    await api(`/api/ams-mapping/${slot}`, { method: 'DELETE' });
+    await loadPrinterStatus();
+  } catch (err) {
+    alert(err.message || 'Failed to unlink spool.');
+  }
 }
 
 function setPrinterState(state, text) {
