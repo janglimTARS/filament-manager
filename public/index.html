@@ -122,7 +122,10 @@
     <form id="printerForm" class="rounded-2xl border border-border bg-card p-4 w-[92vw] max-w-md space-y-3 text-slate-100">
       <h3 class="text-xl font-semibold">Configure Printer</h3>
       <input id="printerIp" class="input" placeholder="Printer IP (e.g. 192.168.1.50)" required />
-      <input id="printerToken" class="input" placeholder="Access token" required />
+      <input id="printerToken" class="input" placeholder="Access code (8-char from touchscreen)" required />
+      <input id="printerSerial" class="input" placeholder="Serial number (e.g. 01P00A123456789)" required />
+      <p class="text-xs text-slate-500">Find serial in Bambu Handy app → Device → Device Info, or on the sticker on the back of the printer.</p>
+      <div id="printerSaveMsg" class="hidden text-sm text-emerald-400 font-semibold"></div>
       <div class="flex gap-2">
         <button class="btn-primary flex-1" type="submit">Save</button>
         <button class="btn-secondary flex-1" type="button" id="closePrinterModalBtn">Cancel</button>

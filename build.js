@@ -147,8 +147,8 @@ async function handleApi(request, env, url) {
   }
 
   if (pathname === '/api/printer' && method === 'GET') {
-    const row = await env.DB.prepare("SELECT ip, token FROM printer_config WHERE id = 'default' LIMIT 1").first();
-    return json({ ip: row?.ip || '', token: row?.token || '' });
+    const row = await env.DB.prepare("SELECT ip, token, serial FROM printer_config WHERE id = 'default' LIMIT 1").first();
+    return json({ ip: row?.ip || '', token: row?.token || '', serial: row?.serial || '' });
   }
 
   if (pathname === '/api/printer' && method === 'PUT') {
@@ -156,10 +156,11 @@ async function handleApi(request, env, url) {
     if (!body) return json({ error: 'Invalid JSON body' }, 400);
     const ip = String(body.ip || '').trim();
     const token = String(body.token || '').trim();
+    const serial = String(body.serial || '').trim();
 
     await env.DB.prepare(
-      "INSERT INTO printer_config (id, ip, token, updated_at) VALUES ('default', ?, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET ip=excluded.ip, token=excluded.token, updated_at=datetime('now')"
-    ).bind(ip, token).run();
+      "INSERT INTO printer_config (id, ip, token, serial, updated_at) VALUES ('default', ?, ?, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET ip=excluded.ip, token=excluded.token, serial=excluded.serial, updated_at=datetime('now')"
+    ).bind(ip, token, serial).run();
 
     return json({ ok: true });
   }

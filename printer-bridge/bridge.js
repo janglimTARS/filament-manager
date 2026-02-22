@@ -1,26 +1,44 @@
-const fs = require('fs');
-const path = require('path');
 const mqtt = require('mqtt');
 
-const configPath = path.join(__dirname, 'config.json');
-const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+const API_ENDPOINT = 'https://filament-manager.jackanglim3.workers.dev';
+const POLL_INTERVAL_MS = 30000;
+const CONFIG_POLL_MS = 10000;
 
-const {
-  printerIp,
-  accessCode,
-  serialNumber,
-  apiEndpoint = 'https://filament-manager.jackanglim3.workers.dev',
-  pollIntervalMs = 30000,
-} = config;
+let printerIp = '';
+let accessCode = '';
+let serialNumber = '';
+let reportTopic = '';
+let requestTopic = '';
+const requestPayload = JSON.stringify({ pushing: { command: 'pushall' } });
 
-if (!printerIp || !accessCode || !serialNumber || [printerIp, accessCode, serialNumber].some((v) => String(v).includes('_HERE'))) {
-  console.error('[bridge] config.json is not configured. Please set printerIp, accessCode, and serialNumber.');
-  process.exit(1);
+async function fetchConfig() {
+  const res = await fetch(`${API_ENDPOINT}/api/printer`);
+  if (!res.ok) throw new Error(`Config fetch failed: ${res.status}`);
+  const data = await res.json();
+  return { ip: data.ip || '', token: data.token || '', serial: data.serial || '' };
 }
 
-const reportTopic = `device/${serialNumber}/report`;
-const requestTopic = `device/${serialNumber}/request`;
-const requestPayload = JSON.stringify({ pushing: { command: 'pushall' } });
+async function waitForConfig() {
+  console.log('[bridge] waiting for printer config from API...');
+  while (true) {
+    try {
+      const cfg = await fetchConfig();
+      if (cfg.ip && cfg.token && cfg.serial) {
+        printerIp = cfg.ip;
+        accessCode = cfg.token;
+        serialNumber = cfg.serial;
+        reportTopic = `device/${serialNumber}/report`;
+        requestTopic = `device/${serialNumber}/request`;
+        console.log(`[bridge] config loaded: ip=${printerIp}, serial=${serialNumber}`);
+        return;
+      }
+      console.log('[bridge] config incomplete, retrying in 10s...');
+    } catch (err) {
+      console.error('[bridge] config fetch error:', err.message, '- retrying in 10s...');
+    }
+    await new Promise(r => setTimeout(r, CONFIG_POLL_MS));
+  }
+}
 
 let latestParsed = null;
 let latestRaw = null;
@@ -76,11 +94,6 @@ async function putJson(url, body) {
 async function pushStatusToApi() {
   if (!latestParsed) return;
 
-  const printerConfigBody = {
-    ip: printerIp,
-    token: accessCode,
-  };
-
   const fullBody = {
     ...latestParsed,
     raw: latestRaw,
@@ -88,66 +101,70 @@ async function pushStatusToApi() {
     updatedAt: new Date().toISOString(),
   };
 
-  await Promise.all([
-    putJson(`${apiEndpoint}/api/printer`, printerConfigBody),
-    putJson(`${apiEndpoint}/api/printer-status`, fullBody),
-  ]);
-
+  await putJson(`${API_ENDPOINT}/api/printer-status`, fullBody);
   console.log('[bridge] status pushed', new Date().toISOString(), latestParsed.state, `${latestParsed.progress}%`);
 }
 
-const client = mqtt.connect(`mqtts://${printerIp}:8883`, {
-  username: 'bblp',
-  password: accessCode,
-  rejectUnauthorized: false,
-  reconnectPeriod: 3000,
-  keepalive: 30,
-  connectTimeout: 15000,
-});
+async function main() {
+  await waitForConfig();
 
-client.on('connect', () => {
-  console.log('[bridge] connected to printer MQTT');
-  client.subscribe(reportTopic, (err) => {
-    if (err) {
-      console.error('[bridge] subscribe failed:', err.message);
-      return;
-    }
-    console.log('[bridge] subscribed to', reportTopic);
-    client.publish(requestTopic, requestPayload);
-    console.log('[bridge] requested initial pushall');
+  const client = mqtt.connect(`mqtts://${printerIp}:8883`, {
+    username: 'bblp',
+    password: accessCode,
+    rejectUnauthorized: false,
+    reconnectPeriod: 3000,
+    keepalive: 30,
+    connectTimeout: 15000,
   });
-});
 
-client.on('message', (topic, messageBuffer) => {
-  if (topic !== reportTopic) return;
+  client.on('connect', () => {
+    console.log('[bridge] connected to printer MQTT');
+    client.subscribe(reportTopic, (err) => {
+      if (err) {
+        console.error('[bridge] subscribe failed:', err.message);
+        return;
+      }
+      console.log('[bridge] subscribed to', reportTopic);
+      client.publish(requestTopic, requestPayload);
+      console.log('[bridge] requested initial pushall');
+    });
+  });
 
-  try {
-    const raw = JSON.parse(messageBuffer.toString('utf8'));
-    latestRaw = raw;
-    latestParsed = parsePrinterStatus(raw);
-  } catch (err) {
-    console.error('[bridge] bad JSON payload:', err.message);
-  }
-});
+  client.on('message', (topic, messageBuffer) => {
+    if (topic !== reportTopic) return;
+    try {
+      const raw = JSON.parse(messageBuffer.toString('utf8'));
+      latestRaw = raw;
+      latestParsed = parsePrinterStatus(raw);
+    } catch (err) {
+      console.error('[bridge] bad JSON payload:', err.message);
+    }
+  });
 
-client.on('error', (err) => {
-  console.error('[bridge] mqtt error:', err.message);
-});
+  client.on('error', (err) => {
+    console.error('[bridge] mqtt error:', err.message);
+  });
 
-client.on('reconnect', () => {
-  console.log('[bridge] reconnecting...');
-});
+  client.on('reconnect', () => {
+    console.log('[bridge] reconnecting...');
+  });
 
-setInterval(async () => {
-  try {
-    client.publish(requestTopic, requestPayload);
-    await pushStatusToApi();
-  } catch (err) {
-    console.error('[bridge] push failed:', err.message);
-  }
-}, Math.max(5000, Number(pollIntervalMs) || 30000));
+  setInterval(async () => {
+    try {
+      client.publish(requestTopic, requestPayload);
+      await pushStatusToApi();
+    } catch (err) {
+      console.error('[bridge] push failed:', err.message);
+    }
+  }, POLL_INTERVAL_MS);
 
-process.on('SIGINT', () => {
-  console.log('[bridge] shutting down...');
-  client.end(true, () => process.exit(0));
+  process.on('SIGINT', () => {
+    console.log('[bridge] shutting down...');
+    client.end(true, () => process.exit(0));
+  });
+}
+
+main().catch((err) => {
+  console.error('[bridge] fatal:', err.message);
+  process.exit(1);
 });

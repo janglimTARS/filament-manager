@@ -334,6 +334,10 @@ async function openPrinterModal() {
     const data = await api('/api/printer');
     document.getElementById('printerIp').value = data.ip || '';
     document.getElementById('printerToken').value = data.token || '';
+    document.getElementById('printerSerial').value = data.serial || '';
+    const msg = document.getElementById('printerSaveMsg');
+    msg.classList.add('hidden');
+    msg.textContent = '';
     els.printerModal.showModal();
   } catch (err) {
     alert(err.message || 'Failed to load printer settings.');
@@ -342,11 +346,14 @@ async function openPrinterModal() {
 
 async function onSavePrinter(e) {
   e.preventDefault();
-  const config = { ip: v('printerIp'), token: v('printerToken') };
+  const config = { ip: v('printerIp'), token: v('printerToken'), serial: v('printerSerial') };
+  const msg = document.getElementById('printerSaveMsg');
   try {
     await api('/api/printer', { method: 'PUT', body: JSON.stringify(config) });
-    els.printerModal.close();
+    msg.textContent = 'Saved! The printer bridge will pick this up shortly.';
+    msg.classList.remove('hidden');
     await loadPrinterConfig();
+    setTimeout(() => { els.printerModal.close(); msg.classList.add('hidden'); }, 2000);
   } catch (err) {
     alert(err.message || 'Failed to save printer settings.');
   }
