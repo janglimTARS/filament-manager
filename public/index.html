@@ -32,6 +32,15 @@
       </div>
     </header>
 
+    <div id="printCompleteBanner" class="hidden rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 space-y-2">
+      <div id="printCompleteText" class="text-sm text-emerald-200"></div>
+      <div class="flex items-center gap-2">
+        <input id="filamentUsedInput" type="number" step="0.1" min="0" class="input w-32" placeholder="Grams used" />
+        <button id="deductFilamentBtn" class="btn-primary text-sm">Deduct</button>
+        <button id="dismissPrintEventBtn" class="btn-secondary text-sm">Dismiss</button>
+      </div>
+    </div>
+
     <section class="grid grid-cols-2 lg:grid-cols-4 gap-3" id="statsGrid"></section>
 
     <section class="rounded-2xl border border-border bg-card p-4">

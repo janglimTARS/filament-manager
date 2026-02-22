@@ -43,6 +43,7 @@ async function waitForConfig() {
 let latestParsed = null;
 let latestRaw = null;
 let cumulativeRaw = {};
+let previousState = null;
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -129,9 +130,9 @@ function parsePrinterStatus(payload) {
   };
 }
 
-async function putJson(url, body) {
+async function requestJson(url, method, body) {
   const res = await fetch(url, {
-    method: 'PUT',
+    method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
@@ -140,6 +141,18 @@ async function putJson(url, body) {
     const txt = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} ${res.statusText} ${txt}`.trim());
   }
+
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) return res.json();
+  return null;
+}
+
+async function putJson(url, body) {
+  return requestJson(url, 'PUT', body);
+}
+
+async function postJson(url, body) {
+  return requestJson(url, 'POST', body);
 }
 
 async function pushStatusToApi() {
@@ -190,6 +203,24 @@ async function main() {
       if (data && isPlainObject(data.print)) {
         cumulativeRaw = deepMerge(cumulativeRaw, data.print);
         latestParsed = parsePrinterStatus({ print: cumulativeRaw });
+
+        if (previousState === 'printing' && latestParsed.state !== 'printing') {
+          const payload = {
+            fileName: String(latestParsed.currentFile || ''),
+            activeTray: Number(latestParsed.ams?.currentTray ?? -1),
+            completedAt: new Date().toISOString(),
+          };
+
+          postJson(`${API_ENDPOINT}/api/print-completed`, payload)
+            .then(() => {
+              console.log('[bridge] print completion recorded', payload.fileName || '(unknown file)');
+            })
+            .catch((err) => {
+              console.error('[bridge] failed to record print completion:', err.message);
+            });
+        }
+
+        previousState = latestParsed.state;
       }
     } catch (err) {
       console.error('[bridge] bad JSON payload:', err.message);

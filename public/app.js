@@ -6,9 +6,15 @@ let spools = [];
 let locations = [];
 let currentEditId = null;
 let amsMappingBySlot = {};
+let pendingPrintEvent = null;
 
 const els = {
   statsGrid: document.getElementById('statsGrid'),
+  printCompleteBanner: document.getElementById('printCompleteBanner'),
+  printCompleteText: document.getElementById('printCompleteText'),
+  filamentUsedInput: document.getElementById('filamentUsedInput'),
+  deductFilamentBtn: document.getElementById('deductFilamentBtn'),
+  dismissPrintEventBtn: document.getElementById('dismissPrintEventBtn'),
   spoolList: document.getElementById('spoolList'),
   emptyState: document.getElementById('emptyState'),
   searchInput: document.getElementById('searchInput'),
@@ -57,6 +63,8 @@ function bindEvents() {
   document.getElementById('closeAmsLinkModalBtn').onclick = () => els.amsLinkModal.close();
   document.getElementById('exportBtn').onclick = exportJson;
   document.getElementById('importInput').onchange = importJson;
+  els.deductFilamentBtn.onclick = onDeductPendingPrintEvent;
+  els.dismissPrintEventBtn.onclick = onDismissPendingPrintEvent;
 
   els.searchInput.oninput = render;
   els.materialFilter.onchange = render;
@@ -387,15 +395,17 @@ async function loadPrinterConfig() {
 
 async function loadPrinterStatus() {
   try {
-    const [status, mapping] = await Promise.all([
+    const [status, pendingEvents] = await Promise.all([
       api('/api/printer-status'),
+      api('/api/print-events?status=pending'),
       loadAmsMapping(),
     ]);
     renderPrinterStatus(status || {});
-    return mapping;
+    updatePrintCompleteBanner(Array.isArray(pendingEvents) ? pendingEvents[0] : null);
   } catch {
     setPrinterState('offline', 'Offline');
     renderAms({});
+    updatePrintCompleteBanner(null);
   }
 }
 
@@ -529,6 +539,63 @@ async function unlinkAmsSlot(slot) {
     await loadPrinterStatus();
   } catch (err) {
     alert(err.message || 'Failed to unlink spool.');
+  }
+}
+
+function updatePrintCompleteBanner(event) {
+  pendingPrintEvent = event || null;
+
+  if (!pendingPrintEvent) {
+    els.printCompleteBanner.classList.add('hidden');
+    els.printCompleteText.textContent = '';
+    els.filamentUsedInput.value = '';
+    return;
+  }
+
+  const fileName = String(pendingPrintEvent.fileName || '').trim() || 'Unknown file';
+  const spool = pendingPrintEvent.spool;
+  const spoolLabel = spool
+    ? `${spool.brand || 'Unknown brand'} — ${spool.colorName || 'Unknown color'}`
+    : 'the linked spool';
+
+  els.printCompleteText.textContent = `Print completed: ${fileName}. Deduct filament from ${spoolLabel}?`;
+  els.printCompleteBanner.classList.remove('hidden');
+}
+
+async function onDeductPendingPrintEvent() {
+  if (!pendingPrintEvent?.id) return;
+
+  const filamentUsedG = Number(els.filamentUsedInput.value || 0);
+  if (!Number.isFinite(filamentUsedG) || filamentUsedG < 0) {
+    alert('Enter a valid filament usage in grams.');
+    return;
+  }
+
+  try {
+    await api(`/api/print-events/${encodeURIComponent(pendingPrintEvent.id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ filament_used_g: filamentUsedG }),
+    });
+    els.filamentUsedInput.value = '';
+    await refreshAll();
+    await loadPrinterStatus();
+  } catch (err) {
+    alert(err.message || 'Failed to deduct filament.');
+  }
+}
+
+async function onDismissPendingPrintEvent() {
+  if (!pendingPrintEvent?.id) return;
+
+  try {
+    await api(`/api/print-events/${encodeURIComponent(pendingPrintEvent.id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ filament_used_g: 0, status: 'dismissed' }),
+    });
+    els.filamentUsedInput.value = '';
+    await loadPrinterStatus();
+  } catch (err) {
+    alert(err.message || 'Failed to dismiss print event.');
   }
 }
 

@@ -58,6 +58,19 @@ function spoolToApi(row) {
   };
 }
 
+function printEventToApi(row) {
+  return {
+    id: row.id,
+    fileName: row.file_name || '',
+    activeTray: Number(row.active_tray ?? -1),
+    spoolId: row.spool_id || '',
+    filamentUsedG: Number(row.filament_used_g || 0),
+    status: row.status || 'pending',
+    completedAt: row.completed_at || '',
+    resolvedAt: row.resolved_at || '',
+  };
+}
+
 async function handleApi(request, env, url) {
   const { pathname } = url;
   const method = request.method.toUpperCase();
@@ -147,6 +160,100 @@ async function handleApi(request, env, url) {
       "INSERT INTO ams_spool_mapping (slot, spool_id, updated_at) VALUES (?, '', datetime('now')) ON CONFLICT(slot) DO UPDATE SET spool_id='', updated_at=datetime('now')"
     ).bind(slot).run();
     return json({ ok: true });
+  }
+
+  if (pathname === '/api/print-completed' && method === 'POST') {
+    const body = await readBody(request);
+    if (!body) return json({ error: 'Invalid JSON body' }, 400);
+
+    const fileName = String(body.fileName || body.file_name || '').trim();
+    const activeTray = Number(body.activeTray ?? body.active_tray ?? -1);
+    const completedAt = String(body.completedAt || body.completed_at || new Date().toISOString());
+    const id = crypto.randomUUID();
+
+    const mapping = Number.isFinite(activeTray)
+      ? await env.DB.prepare('SELECT spool_id FROM ams_spool_mapping WHERE slot = ? LIMIT 1').bind(activeTray).first()
+      : null;
+    const spoolId = String(mapping?.spool_id || '').trim();
+
+    await env.DB.prepare(
+      'INSERT INTO print_events (id, file_name, active_tray, spool_id, filament_used_g, status, completed_at, resolved_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)' 
+    ).bind(
+      id,
+      fileName,
+      Number.isFinite(activeTray) ? activeTray : -1,
+      spoolId,
+      'pending',
+      completedAt,
+      ''
+    ).run();
+
+    const row = await env.DB.prepare('SELECT * FROM print_events WHERE id = ? LIMIT 1').bind(id).first();
+    return json(printEventToApi(row), 201);
+  }
+
+  if (pathname === '/api/print-events' && method === 'GET') {
+    const statusFilter = String(url.searchParams.get('status') || '').trim();
+    let query = 'SELECT * FROM print_events';
+    const binds = [];
+    if (statusFilter) {
+      query += ' WHERE status = ?';
+      binds.push(statusFilter);
+    }
+    query += ' ORDER BY datetime(completed_at) DESC';
+
+    const rows = await env.DB.prepare(query).bind(...binds).all();
+    const events = (rows.results || []).map((row) => printEventToApi(row));
+
+    if (!events.length) return json([]);
+
+    const spoolIds = [...new Set(events.map((e) => e.spoolId).filter(Boolean))];
+    const spoolMap = {};
+    if (spoolIds.length) {
+      const placeholders = spoolIds.map(() => '?').join(', ');
+      const spoolRows = await env.DB.prepare(
+        'SELECT id, brand, color_name FROM spools WHERE id IN (' + placeholders + ')'
+      ).bind(...spoolIds).all();
+      for (const row of (spoolRows.results || [])) {
+        spoolMap[row.id] = {
+          id: row.id,
+          brand: row.brand || '',
+          colorName: row.color_name || '',
+        };
+      }
+    }
+
+    return json(events.map((event) => ({
+      ...event,
+      spool: event.spoolId ? (spoolMap[event.spoolId] || null) : null,
+    })));
+  }
+
+  const printEventMatch = pathname.match(new RegExp('^/api/print-events/([^/]+)$'));
+  if (printEventMatch && method === 'PUT') {
+    const id = decodeURIComponent(printEventMatch[1]);
+    const body = await readBody(request);
+    if (!body) return json({ error: 'Invalid JSON body' }, 400);
+
+    const existing = await env.DB.prepare('SELECT * FROM print_events WHERE id = ? LIMIT 1').bind(id).first();
+    if (!existing) return json({ error: 'Print event not found' }, 404);
+
+    const nextStatus = String(body.status || 'resolved').trim() || 'resolved';
+    const filamentUsedG = Math.max(0, Number(body.filament_used_g ?? body.filamentUsedG ?? 0) || 0);
+    const shouldDeduct = nextStatus === 'resolved' && filamentUsedG > 0 && String(existing.spool_id || '').trim();
+
+    if (shouldDeduct) {
+      await env.DB.prepare(
+        "UPDATE spools SET remaining_weight = MAX(0, remaining_weight - ?), updated_at=datetime('now') WHERE id = ?"
+      ).bind(filamentUsedG, existing.spool_id).run();
+    }
+
+    await env.DB.prepare(
+      "UPDATE print_events SET filament_used_g = ?, status = ?, resolved_at = datetime('now') WHERE id = ?"
+    ).bind(filamentUsedG, nextStatus, id).run();
+
+    const updated = await env.DB.prepare('SELECT * FROM print_events WHERE id = ? LIMIT 1').bind(id).first();
+    return json(printEventToApi(updated));
   }
 
   if (pathname === '/api/locations' && method === 'GET') {
