@@ -44,37 +44,44 @@ let latestParsed = null;
 let latestRaw = null;
 
 function n(value, fallback = 0) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return fallback;
+    const num = Number(trimmed);
+    return Number.isFinite(num) ? num : fallback;
+  }
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
 }
 
 function parsePrinterStatus(payload) {
-  const hasData = !!payload && typeof payload === 'object';
-  const print = hasData ? (payload?.print || payload || {}) : {};
-  const rawState = String(print.gcode_state || '').toUpperCase();
+  const print = payload && typeof payload === 'object' && payload.print && typeof payload.print === 'object'
+    ? payload.print
+    : null;
+  const rawState = String(print?.gcode_state || '').toUpperCase();
 
-  let state = hasData ? 'idle' : 'offline';
+  let state = print ? 'idle' : 'offline';
   if (rawState === 'RUNNING') state = 'printing';
   else if (rawState === 'PAUSE') state = 'paused';
   else if (rawState === 'FAILED') state = 'error';
   else if (rawState === 'IDLE' || rawState === 'FINISH' || rawState === 'STANDBY') state = 'idle';
 
-  const errors = Array.isArray(print.hms) ? print.hms : [];
+  const errors = Array.isArray(print?.hms) ? print.hms : [];
   if (errors.length > 0) state = 'error';
 
   return {
     state,
-    nozzleTemp: n(print.nozzle_temper),
-    nozzleTarget: n(print.nozzle_target_temper),
-    bedTemp: n(print.bed_temper),
-    bedTarget: n(print.bed_target_temper),
-    chamberTemp: n(print.chamber_temper),
-    progress: Math.round(n(print.mc_percent)),
-    remainingMinutes: Math.round(n(print.mc_remaining_time)),
-    currentFile: String(print.gcode_file || ''),
-    currentLayer: Math.round(n(print.layer_num)),
-    totalLayers: Math.round(n(print.total_layer_num)),
-    fanSpeed: Math.round(n(print.cooling_fan_speed)),
+    nozzleTemp: n(print?.nozzle_temper),
+    nozzleTarget: n(print?.nozzle_target_temper),
+    bedTemp: n(print?.bed_temper),
+    bedTarget: n(print?.bed_target_temper),
+    chamberTemp: n(print?.chamber_temper),
+    progress: Math.round(n(print?.mc_percent)),
+    remainingMinutes: Math.round(n(print?.mc_remaining_time)),
+    currentFile: String(print?.subtask_name || print?.gcode_file || ''),
+    currentLayer: Math.round(n(print?.layer_num)),
+    totalLayers: Math.round(n(print?.total_layer_num)),
+    fanSpeed: Math.round(n(print?.cooling_fan_speed)),
     errors,
   };
 }
