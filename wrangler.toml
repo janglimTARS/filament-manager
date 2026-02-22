@@ -3,9 +3,7 @@ main = "src/index.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
-[site]
-bucket = "./public"
-
-[[routes]]
-pattern = "printing.janglim.cloud"
-custom_domain = true
+# Custom domain: printing.janglim.cloud (needs Workers Route API permission)
+# [[routes]]
+# pattern = "printing.janglim.cloud"
+# custom_domain = true
