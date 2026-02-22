@@ -121,7 +121,7 @@ async function handleApi(request, env, url) {
     })));
   }
 
-  const amsMappingMatch = pathname.match(new RegExp('^/api/ams-mapping/(\d+)$'));
+  const amsMappingMatch = pathname.match(new RegExp('^/api/ams-mapping/(\\d+)$'));
   if (amsMappingMatch && method === 'PUT') {
     const slot = Number(amsMappingMatch[1]);
     const body = await readBody(request);
