@@ -3,6 +3,11 @@ main = "src/index.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
+[[d1_databases]]
+binding = "DB"
+database_name = "filament-manager-db"
+database_id = "edd0727c-d261-462e-aa70-a5c85bb86858"
+
 # Custom domain: printing.janglim.cloud (needs Workers Route API permission)
 # [[routes]]
 # pattern = "printing.janglim.cloud"

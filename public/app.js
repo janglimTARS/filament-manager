@@ -1,8 +1,8 @@
-const STORAGE_KEY = 'filament-manager-spools';
-const PRINTER_KEY = 'filament-manager-printer';
 const MATERIAL_DENSITY = { PLA: 1.24, PETG: 1.27, ABS: 1.04, TPU: 1.21, ASA: 1.07, Other: 1.2 };
+const ADD_LOCATION_VALUE = '__add_new_location__';
 
-let spools = loadSpools();
+let spools = [];
+let locations = [];
 let currentEditId = null;
 
 const els = {
@@ -16,15 +16,14 @@ const els = {
   spoolForm: document.getElementById('spoolForm'),
   modalTitle: document.getElementById('modalTitle'),
   printerModal: document.getElementById('printerModal'),
+  locationSelect: document.getElementById('locationSelect'),
 };
 
 init();
 
-function init() {
+async function init() {
   bindEvents();
-  populateFilters();
-  loadPrinterConfig();
-  render();
+  await refreshAll();
 }
 
 function bindEvents() {
@@ -38,21 +37,80 @@ function bindEvents() {
   els.searchInput.oninput = render;
   els.materialFilter.onchange = render;
   els.brandFilter.onchange = render;
+  els.locationSelect.onchange = onLocationSelect;
 
   els.spoolForm.onsubmit = onSubmitSpool;
   document.getElementById('printerForm').onsubmit = onSavePrinter;
 }
 
-function loadSpools() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
-  catch { return []; }
+async function refreshAll() {
+  await Promise.all([loadSpools(), loadLocations(), loadPrinterConfig()]);
+  populateFilters();
+  refreshLocationSelect();
+  render();
 }
-function saveSpools() { localStorage.setItem(STORAGE_KEY, JSON.stringify(spools)); }
+
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  });
+
+  if (!res.ok) {
+    let msg = `Request failed (${res.status})`;
+    try {
+      const data = await res.json();
+      if (data?.error) msg = data.error;
+    } catch {}
+    throw new Error(msg);
+  }
+
+  if (res.status === 204) return null;
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('application/json') ? res.json() : null;
+}
+
+async function loadSpools() {
+  spools = await api('/api/spools');
+}
+
+async function loadLocations() {
+  locations = await api('/api/locations');
+}
+
+function refreshLocationSelect(selected = '') {
+  const options = ['<option value="">No location</option>'];
+  for (const loc of locations) {
+    options.push(`<option value="${escapeHtml(loc.name)}">${escapeHtml(loc.name)}</option>`);
+  }
+  options.push(`<option value="${ADD_LOCATION_VALUE}">➕ Add new location...</option>`);
+  els.locationSelect.innerHTML = options.join('');
+  els.locationSelect.value = selected || '';
+}
+
+async function onLocationSelect() {
+  if (els.locationSelect.value !== ADD_LOCATION_VALUE) return;
+
+  const name = prompt('New storage location name:');
+  if (!name || !name.trim()) {
+    els.locationSelect.value = '';
+    return;
+  }
+
+  try {
+    await api('/api/locations', { method: 'POST', body: JSON.stringify({ name: name.trim() }) });
+    await loadLocations();
+    refreshLocationSelect(name.trim());
+  } catch (err) {
+    alert(err.message || 'Could not create location.');
+    els.locationSelect.value = '';
+  }
+}
 
 function openSpoolModal(spool = null) {
   currentEditId = spool?.id || null;
   els.modalTitle.textContent = spool ? 'Edit Spool' : 'Add Spool';
-  const set = (id, val = '') => document.getElementById(id).value = val;
+  const set = (id, val = '') => (document.getElementById(id).value = val);
 
   set('spoolId', spool?.id || '');
   set('brand', spool?.brand || '');
@@ -60,23 +118,29 @@ function openSpoolModal(spool = null) {
   set('colorHex', spool?.colorHex || '#ffffff');
   set('material', spool?.material || 'PLA');
   set('diameter', spool?.diameter || 1.75);
-  set('location', spool?.location || '');
   set('totalWeight', spool?.totalWeight || '');
   set('remainingWeight', spool?.remainingWeight || '');
   set('purchaseDate', spool?.purchaseDate || '');
   set('cost', spool?.cost || '');
   set('notes', spool?.notes || '');
+  refreshLocationSelect(spool?.location || '');
   els.spoolModal.showModal();
 }
 
-function onSubmitSpool(e) {
+async function onSubmitSpool(e) {
   e.preventDefault();
   const data = {
     id: currentEditId || crypto.randomUUID(),
-    brand: v('brand'), colorName: v('colorName'), colorHex: v('colorHex'),
-    material: v('material'), diameter: Number(v('diameter')) || 1.75,
-    totalWeight: Number(v('totalWeight')), remainingWeight: Number(v('remainingWeight')),
-    location: v('location'), purchaseDate: v('purchaseDate'), cost: Number(v('cost')) || 0,
+    brand: v('brand'),
+    colorName: v('colorName'),
+    colorHex: v('colorHex'),
+    material: v('material'),
+    diameter: Number(v('diameter')) || 1.75,
+    totalWeight: Number(v('totalWeight')),
+    remainingWeight: Number(v('remainingWeight')),
+    location: els.locationSelect.value === ADD_LOCATION_VALUE ? '' : els.locationSelect.value,
+    purchaseDate: v('purchaseDate'),
+    cost: Number(v('cost')) || 0,
     notes: v('notes'),
   };
 
@@ -85,22 +149,36 @@ function onSubmitSpool(e) {
     return;
   }
 
-  const i = spools.findIndex(s => s.id === data.id);
-  if (i >= 0) spools[i] = data; else spools.unshift(data);
-  saveSpools();
-  populateFilters();
-  els.spoolModal.close();
-  render();
+  try {
+    if (currentEditId) {
+      await api(`/api/spools/${encodeURIComponent(currentEditId)}`, { method: 'PUT', body: JSON.stringify(data) });
+    } else {
+      await api('/api/spools', { method: 'POST', body: JSON.stringify(data) });
+    }
+
+    await loadSpools();
+    populateFilters();
+    els.spoolModal.close();
+    render();
+  } catch (err) {
+    alert(err.message || 'Failed to save spool.');
+  }
 }
 
-function v(id) { return document.getElementById(id).value.trim(); }
+function v(id) {
+  return document.getElementById(id).value.trim();
+}
 
-function deleteSpool(id) {
+async function deleteSpool(id) {
   if (!confirm('Delete this spool? This cannot be undone.')) return;
-  spools = spools.filter(s => s.id !== id);
-  saveSpools();
-  populateFilters();
-  render();
+  try {
+    await api(`/api/spools/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    await loadSpools();
+    populateFilters();
+    render();
+  } catch (err) {
+    alert(err.message || 'Failed to delete spool.');
+  }
 }
 
 function getFiltered() {
@@ -108,7 +186,7 @@ function getFiltered() {
   const material = els.materialFilter.value;
   const brand = els.brandFilter.value;
 
-  return spools.filter(s => {
+  return spools.filter((s) => {
     const matchesMaterial = material === 'All materials' || s.material === material;
     const matchesBrand = brand === 'All brands' || s.brand === brand;
     const searchable = Object.values(s).join(' ').toLowerCase();
@@ -123,7 +201,7 @@ function render() {
   els.spoolList.innerHTML = data.map(spoolCard).join('');
   els.emptyState.classList.toggle('hidden', data.length !== 0);
 
-  data.forEach(s => {
+  data.forEach((s) => {
     document.getElementById(`edit-${s.id}`)?.addEventListener('click', () => openSpoolModal(s));
     document.getElementById(`delete-${s.id}`)?.addEventListener('click', () => deleteSpool(s.id));
   });
@@ -159,7 +237,7 @@ function spoolCard(s) {
 }
 
 function estimateLengthMeters(weightG, material, diameterMm) {
-  const density = MATERIAL_DENSITY[material] || MATERIAL_DENSITY.Other; // g/cm3
+  const density = MATERIAL_DENSITY[material] || MATERIAL_DENSITY.Other;
   const dCm = (diameterMm || 1.75) / 10;
   const area = Math.PI * (dCm / 2) ** 2;
   const volumeCm3 = weightG / density;
@@ -176,7 +254,10 @@ function renderStats() {
     return acc;
   }, {});
 
-  const materialSummary = Object.entries(byMaterial).map(([k, v]) => `${k}: ${Math.round(v)}g`).join(' • ') || 'No data';
+  const materialSummary = Object.entries(byMaterial)
+    .map(([k, v]) => `${k}: ${Math.round(v)}g`)
+    .join(' • ') || 'No data';
+
   els.statsGrid.innerHTML = `
     <div class="card"><p class="text-slate-400 text-sm">Total Spools</p><p class="text-2xl font-semibold">${totalSpools}</p></div>
     <div class="card"><p class="text-slate-400 text-sm">Total Remaining</p><p class="text-2xl font-semibold">${Math.round(totalWeight)}g</p></div>
@@ -186,69 +267,81 @@ function renderStats() {
 }
 
 function populateFilters() {
-  const materials = ['All materials', ...new Set(spools.map(s => s.material))];
-  const brands = ['All brands', ...new Set(spools.map(s => s.brand))];
+  const materials = ['All materials', ...new Set(spools.map((s) => s.material))];
+  const brands = ['All brands', ...new Set(spools.map((s) => s.brand))];
   fillSelect(els.materialFilter, materials);
   fillSelect(els.brandFilter, brands);
 }
+
 function fillSelect(el, options) {
   const current = el.value;
-  el.innerHTML = options.map(o => `<option>${o}</option>`).join('');
+  el.innerHTML = options.map((o) => `<option>${escapeHtml(o)}</option>`).join('');
   if (options.includes(current)) el.value = current;
 }
 
-function exportJson() {
-  const payload = JSON.stringify({ exportedAt: new Date().toISOString(), spools }, null, 2);
-  const blob = new Blob([payload], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'filament-inventory.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
+async function exportJson() {
+  try {
+    const payload = await api('/api/export');
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'filament-inventory.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (err) {
+    alert(err.message || 'Failed to export.');
+  }
 }
 
 function importJson(e) {
   const file = e.target.files[0];
   if (!file) return;
+
   const r = new FileReader();
-  r.onload = () => {
+  r.onload = async () => {
     try {
       const parsed = JSON.parse(r.result);
-      const incoming = Array.isArray(parsed) ? parsed : parsed.spools;
-      if (!Array.isArray(incoming)) throw new Error('Invalid format');
-      spools = incoming;
-      saveSpools();
+      await api('/api/import', { method: 'POST', body: JSON.stringify(parsed) });
+      await loadSpools();
       populateFilters();
       render();
       alert('Import successful.');
     } catch {
-      alert('Invalid JSON file.');
+      alert('Invalid JSON file or import failed.');
     }
   };
   r.readAsText(file);
   e.target.value = '';
 }
 
-function openPrinterModal() {
-  const data = JSON.parse(localStorage.getItem(PRINTER_KEY) || '{}');
-  document.getElementById('printerIp').value = data.ip || '';
-  document.getElementById('printerToken').value = data.token || '';
-  els.printerModal.showModal();
+async function openPrinterModal() {
+  try {
+    const data = await api('/api/printer');
+    document.getElementById('printerIp').value = data.ip || '';
+    document.getElementById('printerToken').value = data.token || '';
+    els.printerModal.showModal();
+  } catch (err) {
+    alert(err.message || 'Failed to load printer settings.');
+  }
 }
 
-function onSavePrinter(e) {
+async function onSavePrinter(e) {
   e.preventDefault();
   const config = { ip: v('printerIp'), token: v('printerToken') };
-  localStorage.setItem(PRINTER_KEY, JSON.stringify(config));
-  els.printerModal.close();
-  loadPrinterConfig();
+  try {
+    await api('/api/printer', { method: 'PUT', body: JSON.stringify(config) });
+    els.printerModal.close();
+    await loadPrinterConfig();
+  } catch (err) {
+    alert(err.message || 'Failed to save printer settings.');
+  }
 }
 
-function loadPrinterConfig() {
-  const data = JSON.parse(localStorage.getItem(PRINTER_KEY) || '{}');
+async function loadPrinterConfig() {
+  const data = await api('/api/printer');
   document.getElementById('printerStatus').textContent = data.ip ? `Configured (${data.ip})` : 'Disconnected';
 }
 
-function escapeHtml(str='') {
-  return str.replace(/[&<>'\"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[c]));
+function escapeHtml(str = '') {
+  return str.replace(/[&<>'\"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 }
