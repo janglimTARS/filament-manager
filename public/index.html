@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Filament Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base: '#0f172a',
+            card: '#1e293b',
+            border: '#334155'
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="bg-base text-slate-100 min-h-screen font-sans">
+  <div class="max-w-6xl mx-auto p-4 sm:p-6 space-y-4">
+    <header class="rounded-2xl border border-border bg-card p-4 sm:p-6">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 class="text-2xl sm:text-3xl font-semibold">Filament Inventory Manager</h1>
+          <p class="text-slate-400 mt-1">Track filament spools, stock levels, and usage estimates.</p>
+        </div>
+        <button id="addSpoolBtn" class="btn-primary">+ Add Spool</button>
+      </div>
+    </header>
+
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3" id="statsGrid"></section>
+
+    <section class="rounded-2xl border border-border bg-card p-4">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <input id="searchInput" class="input md:col-span-2" placeholder="Search brand, color, notes, location..." />
+        <select id="materialFilter" class="input"></select>
+        <select id="brandFilter" class="input"></select>
+      </div>
+      <div class="flex flex-wrap gap-3 mt-3">
+        <button id="exportBtn" class="btn-secondary">Export JSON</button>
+        <label class="btn-secondary cursor-pointer">
+          Import JSON
+          <input type="file" id="importInput" accept="application/json" class="hidden" />
+        </label>
+      </div>
+    </section>
+
+    <section class="rounded-2xl border border-border bg-card p-4">
+      <h2 class="text-lg font-semibold mb-3">Inventory</h2>
+      <div id="spoolList" class="space-y-3"></div>
+      <div id="emptyState" class="hidden text-center py-10 text-slate-400">
+        <p class="text-lg">No filament yet.</p>
+        <p>Add your first spool to get started.</p>
+      </div>
+    </section>
+
+    <section class="rounded-2xl border border-border bg-card p-4 space-y-3">
+      <h2 class="text-lg font-semibold">Printer (Bambu P1S Stub)</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+        <div class="chip"><span>Status:</span><strong id="printerStatus">Disconnected</strong></div>
+        <div class="chip"><span>Nozzle:</span><strong>-- °C</strong></div>
+        <div class="chip"><span>Bed:</span><strong>-- °C</strong></div>
+      </div>
+      <div class="chip text-sm"><span>Current Job:</span><strong>None</strong></div>
+      <button id="configurePrinterBtn" class="btn-secondary">Configure Printer</button>
+    </section>
+  </div>
+
+  <dialog id="spoolModal" class="modal">
+    <form id="spoolForm" class="rounded-2xl border border-border bg-card p-4 sm:p-5 w-[92vw] max-w-2xl text-slate-100 space-y-3">
+      <div class="flex items-center justify-between">
+        <h3 id="modalTitle" class="text-xl font-semibold">Add Spool</h3>
+        <button type="button" id="closeModalBtn" class="text-slate-400 hover:text-white">✕</button>
+      </div>
+      <input type="hidden" id="spoolId" />
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <input id="brand" class="input" placeholder="Brand" required />
+        <input id="colorName" class="input" placeholder="Color name (e.g. Matte Black)" required />
+        <input id="colorHex" type="color" class="input h-11 p-1" value="#ffffff" />
+        <select id="material" class="input" required>
+          <option>PLA</option><option>PETG</option><option>ABS</option><option>TPU</option><option>ASA</option><option>Other</option>
+        </select>
+        <input id="diameter" class="input" type="number" step="0.01" value="1.75" required />
+        <input id="location" class="input" placeholder="Storage location / box" />
+        <input id="totalWeight" class="input" type="number" min="1" placeholder="Total weight (g)" required />
+        <input id="remainingWeight" class="input" type="number" min="0" placeholder="Remaining (g)" required />
+        <input id="purchaseDate" class="input" type="date" />
+        <input id="cost" class="input" type="number" step="0.01" min="0" placeholder="Cost ($)" />
+      </div>
+      <textarea id="notes" class="input min-h-24" placeholder="Notes"></textarea>
+      <button class="btn-primary w-full" type="submit">Save Spool</button>
+    </form>
+  </dialog>
+
+  <dialog id="printerModal" class="modal">
+    <form id="printerForm" class="rounded-2xl border border-border bg-card p-4 w-[92vw] max-w-md space-y-3 text-slate-100">
+      <h3 class="text-xl font-semibold">Configure Printer</h3>
+      <input id="printerIp" class="input" placeholder="Printer IP (e.g. 192.168.1.50)" required />
+      <input id="printerToken" class="input" placeholder="Access token" required />
+      <div class="flex gap-2">
+        <button class="btn-primary flex-1" type="submit">Save</button>
+        <button class="btn-secondary flex-1" type="button" id="closePrinterModalBtn">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>

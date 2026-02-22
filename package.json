@@ -1,0 +1,22 @@
+{
+  "name": "filament-manager",
+  "version": "1.0.0",
+  "description": "Filament inventory manager for 3D printing",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "node build.js",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "keywords": [
+    "filament",
+    "3d-printing",
+    "cloudflare",
+    "worker"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^4.54.0"
+  }
+}
