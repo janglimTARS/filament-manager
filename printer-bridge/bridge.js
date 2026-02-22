@@ -53,6 +53,10 @@ function deepMerge(target, source) {
   if (!isPlainObject(source)) return output;
 
   for (const [key, value] of Object.entries(source)) {
+    if (key === 'ams') {
+      output[key] = value;
+      continue;
+    }
     if (isPlainObject(value)) {
       output[key] = deepMerge(output[key], value);
     } else {
@@ -79,6 +83,8 @@ function parsePrinterStatus(payload) {
     ? payload.print
     : null;
   const rawState = String(print?.gcode_state || '').toUpperCase();
+  const amsData = print?.ams;
+  const trays = Array.isArray(amsData?.ams?.[0]?.tray) ? amsData.ams[0].tray : [];
 
   let state = print ? 'idle' : 'offline';
   if (rawState === 'RUNNING') state = 'printing';
@@ -103,6 +109,23 @@ function parsePrinterStatus(payload) {
     totalLayers: Math.round(n(print?.total_layer_num)),
     fanSpeed: Math.round(n(print?.cooling_fan_speed)),
     errors,
+    ams: {
+      humidity: n(amsData?.humidity),
+      currentTray: n(amsData?.tray_now, -1),
+      trays: trays.map((tray, index) => {
+        const rawColor = String(tray?.tray_color || '').trim();
+        return {
+          slot: n(tray?.id, index),
+          material: String(tray?.tray_type || '').trim(),
+          color: rawColor.length > 6 ? rawColor.slice(0, -2) : rawColor,
+          brand: String(tray?.tray_sub_brands || '').trim(),
+          name: String(tray?.tray_id_name || '').trim(),
+          remain: n(tray?.remain, -1),
+          tempMin: n(tray?.nozzle_temp_min),
+          tempMax: n(tray?.nozzle_temp_max),
+        };
+      }),
+    },
   };
 }
 

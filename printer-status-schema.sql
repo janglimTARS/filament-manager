@@ -13,5 +13,6 @@ CREATE TABLE IF NOT EXISTS printer_status (
   total_layers INTEGER DEFAULT 0,
   fan_speed INTEGER DEFAULT 0,
   errors TEXT DEFAULT '[]',
+  ams_data TEXT DEFAULT '{}',
   updated_at TEXT DEFAULT (datetime('now'))
 );

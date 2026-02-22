@@ -30,6 +30,9 @@ const els = {
   printerProgressBar: document.getElementById('printerProgressBar'),
   printerProgressText: document.getElementById('printerProgressText'),
   printerErrors: document.getElementById('printerErrors'),
+  amsSection: document.getElementById('amsSection'),
+  amsHumidity: document.getElementById('amsHumidity'),
+  amsSlots: document.getElementById('amsSlots'),
 };
 
 init();
@@ -373,6 +376,7 @@ async function loadPrinterStatus() {
     renderPrinterStatus(s || {});
   } catch {
     setPrinterState('offline', 'Offline');
+    renderAms({});
   }
 }
 
@@ -399,6 +403,42 @@ function renderPrinterStatus(status) {
     els.printerErrors.classList.add('hidden');
     els.printerErrors.innerHTML = '';
   }
+
+  renderAms(status.ams || {});
+}
+
+function renderAms(ams) {
+  const trays = Array.isArray(ams?.trays) ? ams.trays : [];
+  if (!trays.length) {
+    els.amsSection.classList.add('hidden');
+    els.amsHumidity.textContent = '';
+    els.amsSlots.innerHTML = '';
+    return;
+  }
+
+  const currentTray = Number(ams?.currentTray);
+  const humidity = Number(ams?.humidity);
+  els.amsSection.classList.remove('hidden');
+  els.amsHumidity.textContent = Number.isFinite(humidity) ? `Humidity: ${Math.max(0, Math.round(humidity))}%` : '';
+
+  els.amsSlots.innerHTML = trays.map((tray, idx) => {
+    const slot = Number.isFinite(Number(tray?.slot)) ? Number(tray.slot) : idx;
+    const material = String(tray?.material || 'Unknown').trim() || 'Unknown';
+    const colorHexRaw = String(tray?.color || '').trim();
+    const colorHex = normalizeHex(colorHexRaw);
+    const isActive = slot === currentTray;
+    const activeBadge = isActive ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">ACTIVE</span>' : '';
+    const borderStyle = isActive && colorHex ? `border-color:${colorHex}; box-shadow: inset 0 0 0 1px ${colorHex}55;` : '';
+
+    return `<div class="rounded-xl border border-border bg-slate-900/40 p-3 space-y-2" style="${borderStyle}">
+      <div class="flex items-center justify-between">
+        <div class="w-5 h-5 rounded-full border border-slate-500" style="background:${colorHex || '#64748b'}"></div>
+        ${activeBadge}
+      </div>
+      <div class="text-sm font-semibold">${escapeHtml(material)}</div>
+      <div class="text-xs text-slate-400">Slot ${slot + 1}</div>
+    </div>`;
+  }).join('');
 }
 
 function setPrinterState(state, text) {
@@ -429,6 +469,14 @@ function fmt(value) {
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, Number.isFinite(n) ? n : min));
+}
+
+function normalizeHex(value = '') {
+  const raw = String(value).trim().replace(/^#/, '');
+  if (!raw) return '';
+  const withoutAlpha = raw.length === 8 ? raw.slice(0, 6) : raw;
+  if (!/^[0-9a-fA-F]{6}$/.test(withoutAlpha)) return '';
+  return `#${withoutAlpha}`;
 }
 
 function escapeHtml(str = '') {

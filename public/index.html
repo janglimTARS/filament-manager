@@ -90,6 +90,14 @@
         <button id="refreshPrinterBtn" class="btn-secondary">Refresh Status</button>
       </div>
     </section>
+
+    <section id="amsSection" class="hidden rounded-2xl border border-border bg-card p-4 space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">AMS (Filament Slots)</h2>
+        <span id="amsHumidity" class="text-sm text-slate-400"></span>
+      </div>
+      <div id="amsSlots" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+    </section>
   </div>
 
   <dialog id="spoolModal" class="modal">

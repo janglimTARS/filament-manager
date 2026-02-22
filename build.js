@@ -183,6 +183,7 @@ async function handleApi(request, env, url) {
         totalLayers: 0,
         fanSpeed: 0,
         errors: [],
+        ams: {},
         updatedAt: null,
       });
     }
@@ -205,6 +206,10 @@ async function handleApi(request, env, url) {
         try { return JSON.parse(row.errors || '[]'); }
         catch { return []; }
       })(),
+      ams: (() => {
+        try { return JSON.parse(row.ams_data || '{}'); }
+        catch { return {}; }
+      })(),
       updatedAt: row.updated_at || null,
     });
   }
@@ -219,7 +224,7 @@ async function handleApi(request, env, url) {
     };
 
     await env.DB.prepare(
-      "INSERT INTO printer_status (id, state, nozzle_temp, nozzle_target, bed_temp, bed_target, chamber_temp, progress, remaining_minutes, current_file, current_layer, total_layers, fan_speed, errors, updated_at) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET state=excluded.state, nozzle_temp=excluded.nozzle_temp, nozzle_target=excluded.nozzle_target, bed_temp=excluded.bed_temp, bed_target=excluded.bed_target, chamber_temp=excluded.chamber_temp, progress=excluded.progress, remaining_minutes=excluded.remaining_minutes, current_file=excluded.current_file, current_layer=excluded.current_layer, total_layers=excluded.total_layers, fan_speed=excluded.fan_speed, errors=excluded.errors, updated_at=datetime('now')"
+      "INSERT INTO printer_status (id, state, nozzle_temp, nozzle_target, bed_temp, bed_target, chamber_temp, progress, remaining_minutes, current_file, current_layer, total_layers, fan_speed, errors, ams_data, updated_at) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET state=excluded.state, nozzle_temp=excluded.nozzle_temp, nozzle_target=excluded.nozzle_target, bed_temp=excluded.bed_temp, bed_target=excluded.bed_target, chamber_temp=excluded.chamber_temp, progress=excluded.progress, remaining_minutes=excluded.remaining_minutes, current_file=excluded.current_file, current_layer=excluded.current_layer, total_layers=excluded.total_layers, fan_speed=excluded.fan_speed, errors=excluded.errors, ams_data=excluded.ams_data, updated_at=datetime('now')"
     ).bind(
       String(body.state || 'offline').toLowerCase(),
       toNum(body.nozzleTemp ?? body.nozzle_temp),
@@ -233,7 +238,8 @@ async function handleApi(request, env, url) {
       Math.round(toNum(body.currentLayer ?? body.current_layer)),
       Math.round(toNum(body.totalLayers ?? body.total_layers)),
       Math.round(toNum(body.fanSpeed ?? body.fan_speed)),
-      JSON.stringify(Array.isArray(body.errors) ? body.errors : [])
+      JSON.stringify(Array.isArray(body.errors) ? body.errors : []),
+      JSON.stringify(body.ams || {})
     ).run();
 
     return json({ ok: true });
