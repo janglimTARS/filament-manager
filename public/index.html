@@ -59,14 +59,36 @@
     </section>
 
     <section class="rounded-2xl border border-border bg-card p-4 space-y-3">
-      <h2 class="text-lg font-semibold">Printer (Bambu P1S Stub)</h2>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-        <div class="chip"><span>Status:</span><strong id="printerStatus">Disconnected</strong></div>
-        <div class="chip"><span>Nozzle:</span><strong>-- °C</strong></div>
-        <div class="chip"><span>Bed:</span><strong>-- °C</strong></div>
+      <h2 class="text-lg font-semibold">Printer (Bambu P1S)</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+        <div class="chip">
+          <span>Status:</span>
+          <strong id="printerStatus" class="flex items-center gap-2">
+            <span id="printerStateDot" class="inline-block w-2.5 h-2.5 rounded-full bg-slate-500"></span>
+            <span id="printerStateText">Offline</span>
+          </strong>
+        </div>
+        <div class="chip"><span>Nozzle:</span><strong id="printerNozzle">-- / -- °C</strong></div>
+        <div class="chip"><span>Bed:</span><strong id="printerBed">-- / -- °C</strong></div>
+        <div class="chip"><span>Chamber:</span><strong id="printerChamber">-- °C</strong></div>
+        <div class="chip"><span>Layers:</span><strong id="printerLayers">-- / --</strong></div>
+        <div class="chip"><span>Fan Speed:</span><strong id="printerFan">--</strong></div>
       </div>
-      <div class="chip text-sm"><span>Current Job:</span><strong>None</strong></div>
-      <button id="configurePrinterBtn" class="btn-secondary">Configure Printer</button>
+      <div class="card space-y-2">
+        <div class="flex items-center justify-between text-sm text-slate-300">
+          <span id="printerFile">No active job</span>
+          <span id="printerRemaining">-- min left</span>
+        </div>
+        <div class="w-full bg-slate-800 rounded-full h-3">
+          <div id="printerProgressBar" class="h-3 rounded-full bg-cyan-400" style="width:0%"></div>
+        </div>
+        <div class="text-xs text-slate-400"><span id="printerProgressText">0%</span></div>
+      </div>
+      <div id="printerErrors" class="hidden card border-red-500/40 text-sm text-red-300"></div>
+      <div class="flex gap-2">
+        <button id="configurePrinterBtn" class="btn-secondary">Configure Printer</button>
+        <button id="refreshPrinterBtn" class="btn-secondary">Refresh Status</button>
+      </div>
     </section>
   </div>
 

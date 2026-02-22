@@ -17,6 +17,18 @@ const els = {
   modalTitle: document.getElementById('modalTitle'),
   printerModal: document.getElementById('printerModal'),
   locationSelect: document.getElementById('locationSelect'),
+  printerStateDot: document.getElementById('printerStateDot'),
+  printerStateText: document.getElementById('printerStateText'),
+  printerNozzle: document.getElementById('printerNozzle'),
+  printerBed: document.getElementById('printerBed'),
+  printerChamber: document.getElementById('printerChamber'),
+  printerFile: document.getElementById('printerFile'),
+  printerRemaining: document.getElementById('printerRemaining'),
+  printerLayers: document.getElementById('printerLayers'),
+  printerFan: document.getElementById('printerFan'),
+  printerProgressBar: document.getElementById('printerProgressBar'),
+  printerProgressText: document.getElementById('printerProgressText'),
+  printerErrors: document.getElementById('printerErrors'),
 };
 
 init();
@@ -24,12 +36,15 @@ init();
 async function init() {
   bindEvents();
   await refreshAll();
+  await loadPrinterStatus();
+  setInterval(loadPrinterStatus, 15000);
 }
 
 function bindEvents() {
   document.getElementById('addSpoolBtn').onclick = () => openSpoolModal();
   document.getElementById('closeModalBtn').onclick = () => els.spoolModal.close();
   document.getElementById('configurePrinterBtn').onclick = () => openPrinterModal();
+  document.getElementById('refreshPrinterBtn').onclick = () => loadPrinterStatus();
   document.getElementById('closePrinterModalBtn').onclick = () => els.printerModal.close();
   document.getElementById('exportBtn').onclick = exportJson;
   document.getElementById('importInput').onchange = importJson;
@@ -339,9 +354,75 @@ async function onSavePrinter(e) {
 
 async function loadPrinterConfig() {
   const data = await api('/api/printer');
-  document.getElementById('printerStatus').textContent = data.ip ? `Configured (${data.ip})` : 'Disconnected';
+  if (!data.ip) {
+    setPrinterState('offline', 'Not configured');
+  }
+}
+
+async function loadPrinterStatus() {
+  try {
+    const s = await api('/api/printer-status');
+    renderPrinterStatus(s || {});
+  } catch {
+    setPrinterState('offline', 'Offline');
+  }
+}
+
+function renderPrinterStatus(status) {
+  const state = String(status.state || 'offline').toLowerCase();
+  const progress = clamp(Number(status.progress || 0), 0, 100);
+  const errors = Array.isArray(status.errors) ? status.errors : [];
+
+  setPrinterState(state, prettyState(state));
+  els.printerNozzle.textContent = `${fmt(status.nozzleTemp)} / ${fmt(status.nozzleTarget)} °C`;
+  els.printerBed.textContent = `${fmt(status.bedTemp)} / ${fmt(status.bedTarget)} °C`;
+  els.printerChamber.textContent = `${fmt(status.chamberTemp)} °C`;
+  els.printerFile.textContent = status.currentFile || 'No active job';
+  els.printerRemaining.textContent = `${Math.max(0, Math.round(Number(status.remainingMinutes || 0)))} min left`;
+  els.printerLayers.textContent = `${Math.max(0, Math.round(Number(status.currentLayer || 0)))} / ${Math.max(0, Math.round(Number(status.totalLayers || 0)))}`;
+  els.printerFan.textContent = `${Math.max(0, Math.round(Number(status.fanSpeed || 0)))}`;
+  els.printerProgressBar.style.width = `${progress}%`;
+  els.printerProgressText.textContent = `${Math.round(progress)}%`;
+
+  if (errors.length) {
+    els.printerErrors.classList.remove('hidden');
+    els.printerErrors.innerHTML = `<strong class="block mb-1">Errors</strong>${errors.map((e) => `<div>• ${escapeHtml(typeof e === 'string' ? e : JSON.stringify(e))}</div>`).join('')}`;
+  } else {
+    els.printerErrors.classList.add('hidden');
+    els.printerErrors.innerHTML = '';
+  }
+}
+
+function setPrinterState(state, text) {
+  const colors = {
+    printing: 'bg-emerald-400',
+    idle: 'bg-amber-400',
+    paused: 'bg-amber-400',
+    error: 'bg-red-500',
+    offline: 'bg-slate-500',
+  };
+
+  els.printerStateDot.className = `inline-block w-2.5 h-2.5 rounded-full ${colors[state] || colors.offline}`;
+  els.printerStateText.textContent = text;
+}
+
+function prettyState(state) {
+  if (state === 'printing') return 'Printing';
+  if (state === 'idle') return 'Idle';
+  if (state === 'paused') return 'Paused';
+  if (state === 'error') return 'Error';
+  return 'Offline';
+}
+
+function fmt(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n.toFixed(1) : '0.0';
+}
+
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, Number.isFinite(n) ? n : min));
 }
 
 function escapeHtml(str = '') {
-  return str.replace(/[&<>'\"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
+  return str.replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 }

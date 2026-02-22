@@ -164,6 +164,80 @@ async function handleApi(request, env, url) {
     return json({ ok: true });
   }
 
+  if (pathname === '/api/printer-status' && method === 'GET') {
+    const row = await env.DB.prepare("SELECT * FROM printer_status WHERE id = 'default' LIMIT 1").first();
+    if (!row) {
+      return json({
+        id: 'default',
+        state: 'offline',
+        nozzleTemp: 0,
+        nozzleTarget: 0,
+        bedTemp: 0,
+        bedTarget: 0,
+        chamberTemp: 0,
+        progress: 0,
+        remainingMinutes: 0,
+        currentFile: '',
+        currentLayer: 0,
+        totalLayers: 0,
+        fanSpeed: 0,
+        errors: [],
+        updatedAt: null,
+      });
+    }
+
+    return json({
+      id: row.id,
+      state: row.state || 'offline',
+      nozzleTemp: Number(row.nozzle_temp || 0),
+      nozzleTarget: Number(row.nozzle_target || 0),
+      bedTemp: Number(row.bed_temp || 0),
+      bedTarget: Number(row.bed_target || 0),
+      chamberTemp: Number(row.chamber_temp || 0),
+      progress: Number(row.progress || 0),
+      remainingMinutes: Number(row.remaining_minutes || 0),
+      currentFile: row.current_file || '',
+      currentLayer: Number(row.current_layer || 0),
+      totalLayers: Number(row.total_layers || 0),
+      fanSpeed: Number(row.fan_speed || 0),
+      errors: (() => {
+        try { return JSON.parse(row.errors || '[]'); }
+        catch { return []; }
+      })(),
+      updatedAt: row.updated_at || null,
+    });
+  }
+
+  if (pathname === '/api/printer-status' && method === 'PUT') {
+    const body = await readBody(request);
+    if (!body) return json({ error: 'Invalid JSON body' }, 400);
+
+    const toNum = (v, d = 0) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : d;
+    };
+
+    await env.DB.prepare(
+      "INSERT INTO printer_status (id, state, nozzle_temp, nozzle_target, bed_temp, bed_target, chamber_temp, progress, remaining_minutes, current_file, current_layer, total_layers, fan_speed, errors, updated_at) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET state=excluded.state, nozzle_temp=excluded.nozzle_temp, nozzle_target=excluded.nozzle_target, bed_temp=excluded.bed_temp, bed_target=excluded.bed_target, chamber_temp=excluded.chamber_temp, progress=excluded.progress, remaining_minutes=excluded.remaining_minutes, current_file=excluded.current_file, current_layer=excluded.current_layer, total_layers=excluded.total_layers, fan_speed=excluded.fan_speed, errors=excluded.errors, updated_at=datetime('now')"
+    ).bind(
+      String(body.state || 'offline').toLowerCase(),
+      toNum(body.nozzleTemp ?? body.nozzle_temp),
+      toNum(body.nozzleTarget ?? body.nozzle_target),
+      toNum(body.bedTemp ?? body.bed_temp),
+      toNum(body.bedTarget ?? body.bed_target),
+      toNum(body.chamberTemp ?? body.chamber_temp),
+      Math.round(toNum(body.progress)),
+      Math.round(toNum(body.remainingMinutes ?? body.remaining_minutes)),
+      String(body.currentFile ?? body.current_file ?? ''),
+      Math.round(toNum(body.currentLayer ?? body.current_layer)),
+      Math.round(toNum(body.totalLayers ?? body.total_layers)),
+      Math.round(toNum(body.fanSpeed ?? body.fan_speed)),
+      JSON.stringify(Array.isArray(body.errors) ? body.errors : [])
+    ).run();
+
+    return json({ ok: true });
+  }
+
   if (pathname === '/api/export' && method === 'GET') {
     const [spools, locations, printer] = await Promise.all([
       env.DB.prepare('SELECT * FROM spools ORDER BY datetime(created_at) DESC').all(),

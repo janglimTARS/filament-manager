@@ -1,0 +1,7 @@
+{
+  "printerIp": "PRINTER_IP_HERE",
+  "accessCode": "ACCESS_CODE_HERE",
+  "serialNumber": "SERIAL_HERE",
+  "apiEndpoint": "https://filament-manager.jackanglim3.workers.dev",
+  "pollIntervalMs": 30000
+}
