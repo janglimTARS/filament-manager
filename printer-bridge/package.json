@@ -10,6 +10,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "adm-zip": "^0.5.16",
+    "basic-ftp": "^5.0.5",
     "mqtt": "^5.15.0"
   }
 }

@@ -161,6 +161,7 @@ async function handleApi(request, env, url) {
 
     const fileName = String(body.fileName || body.file_name || '').trim();
     const activeTray = Number(body.activeTray ?? body.active_tray ?? -1);
+    const filamentUsedG = Math.max(0, Number(body.filamentUsedGrams ?? body.filament_used_g ?? 0) || 0);
     const completedAt = String(body.completedAt || body.completed_at || new Date().toISOString());
     const id = crypto.randomUUID();
 
@@ -169,20 +170,49 @@ async function handleApi(request, env, url) {
       : null;
     const spoolId = String(mapping?.spool_id || '').trim();
 
+    let deducted = false;
+    let spoolBefore = null;
+    let spoolAfter = null;
+    if (spoolId && filamentUsedG > 0) {
+      const spoolRow = await env.DB.prepare('SELECT remaining_weight FROM spools WHERE id = ? LIMIT 1').bind(spoolId).first();
+      if (spoolRow) {
+        spoolBefore = Number(spoolRow.remaining_weight || 0);
+        spoolAfter = Math.max(0, spoolBefore - filamentUsedG);
+        await env.DB.prepare(
+          "UPDATE spools SET remaining_weight = ?, updated_at = datetime('now') WHERE id = ?"
+        ).bind(spoolAfter, spoolId).run();
+        deducted = true;
+      }
+    }
+
+    const status = deducted ? 'resolved' : 'pending';
+    const resolvedAt = deducted ? completedAt : '';
     await env.DB.prepare(
-      'INSERT INTO print_events (id, file_name, active_tray, spool_id, filament_used_g, status, completed_at, resolved_at) VALUES (?, ?, ?, ?, 0, ?, ?, ?)' 
+      'INSERT INTO print_events (id, file_name, active_tray, spool_id, filament_used_g, status, completed_at, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       id,
       fileName,
       Number.isFinite(activeTray) ? activeTray : -1,
       spoolId,
-      'pending',
+      filamentUsedG,
+      status,
       completedAt,
-      ''
+      resolvedAt
     ).run();
 
     const row = await env.DB.prepare('SELECT * FROM print_events WHERE id = ? LIMIT 1').bind(id).first();
-    return json(printEventToApi(row), 201);
+    return json({
+      ...printEventToApi(row),
+      deduction: {
+        attempted: filamentUsedG > 0,
+        deducted,
+        spoolId,
+        activeTray: Number.isFinite(activeTray) ? activeTray : -1,
+        filamentUsedG,
+        previousRemainingWeight: spoolBefore,
+        newRemainingWeight: spoolAfter,
+      },
+    }, 201);
   }
 
   if (pathname === '/api/print-events' && method === 'GET') {
