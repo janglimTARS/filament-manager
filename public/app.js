@@ -1,5 +1,6 @@
 const MATERIAL_DENSITY = { PLA: 1.24, PETG: 1.27, ABS: 1.04, TPU: 1.21, ASA: 1.07, Other: 1.2 };
 const ADD_LOCATION_VALUE = '__add_new_location__';
+const PRINTER_STATUS_REFRESH_MS = 15000;
 
 let spools = [];
 let locations = [];
@@ -37,7 +38,7 @@ async function init() {
   bindEvents();
   await refreshAll();
   await loadPrinterStatus();
-  setInterval(loadPrinterStatus, 15000);
+  setInterval(loadPrinterStatus, PRINTER_STATUS_REFRESH_MS);
 }
 
 function bindEvents() {

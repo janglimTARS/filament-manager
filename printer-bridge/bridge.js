@@ -49,14 +49,15 @@ function n(value, fallback = 0) {
 }
 
 function parsePrinterStatus(payload) {
-  const print = payload?.print || payload || {};
+  const hasData = !!payload && typeof payload === 'object';
+  const print = hasData ? (payload?.print || payload || {}) : {};
   const rawState = String(print.gcode_state || '').toUpperCase();
 
-  let state = 'offline';
+  let state = hasData ? 'idle' : 'offline';
   if (rawState === 'RUNNING') state = 'printing';
   else if (rawState === 'PAUSE') state = 'paused';
   else if (rawState === 'FAILED') state = 'error';
-  else if (rawState === 'IDLE' || rawState === 'FINISH') state = 'idle';
+  else if (rawState === 'IDLE' || rawState === 'FINISH' || rawState === 'STANDBY') state = 'idle';
 
   const errors = Array.isArray(print.hms) ? print.hms : [];
   if (errors.length > 0) state = 'error';
