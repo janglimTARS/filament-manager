@@ -42,6 +42,26 @@ async function waitForConfig() {
 
 let latestParsed = null;
 let latestRaw = null;
+let cumulativeRaw = {};
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function deepMerge(target, source) {
+  const output = isPlainObject(target) ? { ...target } : {};
+  if (!isPlainObject(source)) return output;
+
+  for (const [key, value] of Object.entries(source)) {
+    if (isPlainObject(value)) {
+      output[key] = deepMerge(output[key], value);
+    } else {
+      output[key] = value;
+    }
+  }
+
+  return output;
+}
 
 function n(value, fallback = 0) {
   if (typeof value === 'string') {
@@ -141,9 +161,13 @@ async function main() {
   client.on('message', (topic, messageBuffer) => {
     if (topic !== reportTopic) return;
     try {
-      const raw = JSON.parse(messageBuffer.toString('utf8'));
-      latestRaw = raw;
-      latestParsed = parsePrinterStatus(raw);
+      const data = JSON.parse(messageBuffer.toString('utf8'));
+      latestRaw = data;
+
+      if (data && isPlainObject(data.print)) {
+        cumulativeRaw = deepMerge(cumulativeRaw, data.print);
+        latestParsed = parsePrinterStatus({ print: cumulativeRaw });
+      }
     } catch (err) {
       console.error('[bridge] bad JSON payload:', err.message);
     }
