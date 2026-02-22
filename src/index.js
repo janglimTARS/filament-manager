@@ -82,7 +82,7 @@ async function handleApi(request, env, url) {
     return json({ ok: true, id: spool.id }, 201);
   }
 
-  const spoolMatch = pathname.match(/^/api/spools/([^/]+)$/);
+  const spoolMatch = pathname.match(new RegExp('^/api/spools/([^/]+)$'));
   if (spoolMatch && method === 'PUT') {
     const id = decodeURIComponent(spoolMatch[1]);
     const body = await readBody(request);
@@ -132,7 +132,7 @@ async function handleApi(request, env, url) {
     }
   }
 
-  const locMatch = pathname.match(/^/api/locations/([^/]+)$/);
+  const locMatch = pathname.match(new RegExp('^/api/locations/([^/]+)$'));
   if (locMatch && method === 'DELETE') {
     const id = decodeURIComponent(locMatch[1]);
     await env.DB.prepare('DELETE FROM storage_locations WHERE id = ?').bind(id).run();
