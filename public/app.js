@@ -457,17 +457,18 @@ function renderAms(ams) {
     const colorHex = normalizeHex(colorHexRaw);
     const isActive = slot === currentTray;
     const activeBadge = isActive ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">ACTIVE</span>' : '';
-    const borderStyle = isActive && colorHex ? `border-color:${colorHex}; box-shadow: inset 0 0 0 1px ${colorHex}55;` : '';
 
     const linkedSpoolId = amsMappingBySlot[slot] || '';
     const linkedSpool = linkedSpoolId ? spools.find((s) => s.id === linkedSpoolId) : null;
+    const displayColor = normalizeHex(linkedSpool?.colorHex || '') || colorHex;
+    const borderStyle = isActive && displayColor ? `border-color:${displayColor}; box-shadow: inset 0 0 0 1px ${displayColor}55;` : '';
     const linkedText = linkedSpool
       ? `${escapeHtml(linkedSpool.brand)} — ${escapeHtml(linkedSpool.colorName)}`
       : 'No linked spool';
 
     return `<div class="rounded-xl border border-border bg-slate-900/40 p-3 space-y-2" style="${borderStyle}">
       <div class="flex items-center justify-between">
-        <div class="w-5 h-5 rounded-full border border-slate-500" style="background:${colorHex || '#64748b'}"></div>
+        <div class="w-5 h-5 rounded-full border border-slate-500" style="background:${displayColor || '#64748b'}"></div>
         ${activeBadge}
       </div>
       <div class="text-sm font-semibold">${escapeHtml(material)}</div>
