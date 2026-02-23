@@ -49,6 +49,7 @@ let cumulativeRaw = {};
 let previousState = null;
 let currentPrintUsage = null;
 let currentPrintUsagePromise = null;
+let activeTrayDuringPrint = -1;
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -451,12 +452,22 @@ async function main() {
 
         if (previousState !== 'printing' && latestParsed.state === 'printing') {
           const startFile = String(latestParsed.currentFile || '').trim();
+          activeTrayDuringPrint = Number(latestParsed.ams?.currentTray ?? -1);
+          console.log('[bridge] print started, active tray:', activeTrayDuringPrint);
           if (startFile) {
             console.log('[bridge] print started, estimating filament usage for', startFile);
             startFilamentEstimateForCurrentPrint(startFile);
           } else {
             currentPrintUsage = null;
             currentPrintUsagePromise = null;
+          }
+        }
+
+        // Track active tray during printing (it can change, always keep latest)
+        if (latestParsed.state === 'printing') {
+          const currentTray = Number(latestParsed.ams?.currentTray ?? -1);
+          if (currentTray >= 0) {
+            activeTrayDuringPrint = currentTray;
           }
         }
 
@@ -467,7 +478,7 @@ async function main() {
             .then((filamentUsedGrams) => {
               const payload = {
                 fileName: payloadFileName,
-                activeTray: Number(latestParsed.ams?.currentTray ?? -1),
+                activeTray: activeTrayDuringPrint >= 0 ? activeTrayDuringPrint : Number(latestParsed.ams?.currentTray ?? -1),
                 filamentUsedGrams: Number((filamentUsedGrams || 0).toFixed(2)),
                 completedAt: new Date().toISOString(),
               };
@@ -487,6 +498,7 @@ async function main() {
             .finally(() => {
               currentPrintUsage = null;
               currentPrintUsagePromise = null;
+              activeTrayDuringPrint = -1;
             });
         }
 
