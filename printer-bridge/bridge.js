@@ -211,6 +211,7 @@ function extractGcodeTextFrom3mf(buffer) {
 function parseDirectFilamentGrams(gcodeText) {
   const lines = gcodeText.split(/\r?\n/);
   const directPatterns = [
+    /;\s*total filament weight\s*\[g\]/i,
     /;\s*filament used\s*\[g\]/i,
     /;\s*total filament used/i,
   ];
